@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install up down restart status logs doctor backup restore upgrade config test-installer-ownership
+.PHONY: install up down restart status logs doctor backup restore upgrade config test-installer-ownership test-doctor-ports
 
 install:
 	sudo ./install.sh
@@ -38,3 +38,6 @@ config:
 
 test-installer-ownership:
 	sudo ./scripts/test-installer-ownership.sh
+
+test-doctor-ports:
+	./scripts/test-doctor-ports.sh
