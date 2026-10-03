@@ -1,0 +1,51 @@
+[Unit]
+Description=Pulse DNS block agent dry-run instance (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+User=pulse
+Group=pulse
+EnvironmentFile=/etc/pulse-agent-%i/agent.env
+
+ExecStart=/opt/pulse/bin/pulse-agent \
+    -listen ${PULSE_AGENT_LISTEN} \
+    -token-file ${PULSE_AGENT_TOKEN_FILE} \
+    -allowed-callers ${PULSE_AGENT_ALLOWED_CALLERS} \
+    -protected-ips ${PULSE_AGENT_PROTECTED_IPS} \
+    -state-file /var/lib/pulse-agent-%i/blocks.json \
+    -audit-file /var/lib/pulse-agent-%i/audit.jsonl \
+    -reconcile-interval 30s \
+    -dry-run=true
+
+Restart=on-failure
+RestartSec=2
+StateDirectory=pulse-agent-%i
+StateDirectoryMode=0750
+UMask=0077
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pulse-agent-%i
+
+[Install]
+WantedBy=multi-user.target

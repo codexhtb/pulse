@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.playwright-libs/
+.nginx/
+.env*
+!.env.example
+*.log
+*.tmp

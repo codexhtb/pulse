@@ -1,0 +1,63 @@
+[Unit]
+Description=Pulse DNS Telemetry Collector
+After=network-online.target clickhouse-server.service
+Wants=network-online.target
+Requires=clickhouse-server.service
+
+[Service]
+Type=simple
+
+User=pulse
+Group=pulse
+
+EnvironmentFile=/etc/pulse/clickhouse-ingest.env
+
+Environment=PULSE_BATCH_SIZE=5000
+Environment=PULSE_QUEUE_SIZE=100000
+Environment=PULSE_FLUSH_INTERVAL_MS=500
+Environment=PULSE_CORRELATION_TIMEOUT_MS=30000
+Environment=PULSE_DNSTAP_LISTEN=192.0.2.10:6000
+Environment=PULSE_EXPECTED_SOURCES=resolver-a,resolver-b
+Environment=PULSE_PENDING_STATE_DIR=/var/lib/pulse/pending
+Environment=PULSE_PENDING_FLUSH_MS=10
+Environment=PULSE_PENDING_SYNC_MS=100
+Environment=PULSE_PENDING_CHECKPOINT_MS=60000
+Environment=PULSE_COLLECTOR_STATUS_LISTEN=127.0.0.1:9093
+Environment=PULSE_LIVE_UDP=127.0.0.1:9092
+Environment=PULSE_LIVE_QUEUE_SIZE=50000
+
+ExecStart=/opt/pulse/bin/pulse-collector \
+    -listen ${PULSE_DNSTAP_LISTEN} \
+    -tenant default \
+    -clickhouse=true \
+    -debug-events=false
+
+Restart=always
+RestartSec=2
+
+TimeoutStopSec=20
+LimitNOFILE=65536
+StateDirectory=pulse
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+
+SyslogIdentifier=pulse-collector
+
+[Install]
+WantedBy=multi-user.target

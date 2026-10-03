@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "id": "resolver-a",
+      "display_name": "Resolver A",
+      "source_identity": "resolver-a",
+      "agent_url": "http://192.0.2.53:9094",
+      "token_file": "/etc/pulse/control-secrets/resolver-a.token",
+      "dns_service_ip": "192.0.2.53",
+      "control_enabled": true
+    },
+    {
+      "id": "observer-b",
+      "display_name": "Observer B",
+      "source_identity": "observer-b",
+      "agent_url": "http://192.0.2.54:9094",
+      "token_file": "/etc/pulse/control-secrets/observer-b.token",
+      "dns_service_ip": "192.0.2.54",
+      "control_enabled": false
+    }
+  ]
+}

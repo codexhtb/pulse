@@ -1,0 +1,2 @@
+Cmnd_Alias PULSE_NFT_HELPER = /usr/local/libexec/pulse-nft-helper reconcile, /usr/local/libexec/pulse-nft-helper status
+pulse-agent ALL=(root) NOPASSWD: PULSE_NFT_HELPER

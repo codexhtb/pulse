@@ -1,0 +1,52 @@
+[Unit]
+Description=Pulse DNS Visibility API
+After=network-online.target clickhouse-server.service
+Wants=network-online.target
+Requires=clickhouse-server.service
+
+[Service]
+Type=simple
+
+User=pulse
+Group=pulse
+
+EnvironmentFile=/etc/pulse/clickhouse-api.env
+EnvironmentFile=/etc/pulse/control.env
+EnvironmentFile=/etc/pulse/auth.env
+
+Environment=PULSE_LIVE_UDP_LISTEN=127.0.0.1:9092
+Environment=PULSE_COLLECTOR_STATUS_URL=http://127.0.0.1:9093/internal/status
+Environment=PULSE_STORAGE_PATH=/var/lib/clickhouse
+Environment=PULSE_STORAGE_WARNING_PCT=70
+Environment=PULSE_STORAGE_CRITICAL_PCT=85
+Environment=PULSE_CLICKHOUSE_SYSTEM_METRICS=false
+
+ExecStart=/opt/pulse/bin/pulse-api \
+    -listen 127.0.0.1:8081
+
+Restart=always
+RestartSec=2
+StateDirectory=pulse-api
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+
+SyslogIdentifier=pulse-api
+
+[Install]
+WantedBy=multi-user.target

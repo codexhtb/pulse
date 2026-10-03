@@ -1,0 +1,52 @@
+[Unit]
+Description=Pulse DNS block agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+User=pulse-agent
+Group=pulse-agent
+EnvironmentFile=/etc/pulse-agent/agent.env
+
+ExecStart=/opt/pulse/bin/pulse-agent \
+    -listen ${PULSE_AGENT_LISTEN} \
+    -token-file ${PULSE_AGENT_TOKEN_FILE} \
+    -allowed-callers ${PULSE_AGENT_ALLOWED_CALLERS} \
+    -protected-ips ${PULSE_AGENT_PROTECTED_IPS} \
+    -state-file /var/lib/pulse-agent/blocks.json \
+    -audit-file /var/lib/pulse-agent/audit.jsonl \
+    -helper /usr/local/libexec/pulse-nft-helper \
+    -reconcile-interval 30s
+
+Restart=on-failure
+RestartSec=2
+StateDirectory=pulse-agent
+StateDirectoryMode=0750
+UMask=0077
+
+# The agent has no effective or ambient capabilities. The narrow bounding set is
+# retained only so setuid sudo can run the exact helper as root with CAP_NET_ADMIN.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SETUID CAP_SETGID CAP_DAC_OVERRIDE CAP_AUDIT_WRITE
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pulse-agent
+
+[Install]
+WantedBy=multi-user.target

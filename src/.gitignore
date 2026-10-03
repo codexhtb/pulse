@@ -1,0 +1,46 @@
+# Local environment and credentials
+.env
+.env.*
+*.env
+*.env.*
+!*.env.example
+*.token
+control-nodes.json
+
+# Build and test output
+/bin/
+/build/
+/dist/
+/pulse-api
+/pulse-collector
+/pulse-agent
+*.exe
+*.test
+*.out
+coverage/
+coverage.*
+
+# Runtime state and database exports
+/data/
+/runtime/
+/backups/
+*.wal
+*.wal.*
+*.checkpoint
+unclean.marker
+*.db
+*.sqlite
+*.sqlite3
+*.native
+*.bin
+*.pid
+*.sock
+dns-control.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,83 @@
+# ============================================================
+# Pulse monorepo
+# ============================================================
+
+# Production/runtime artifacts
+/backups/
+/build-phase2-*/
+/bin/
+*.bak
+*.backup
+*.old
+
+# Backend build artifacts
+/src/build/
+/src/pulse-api
+/src/pulse-collector
+/src/pulse-agent
+/src/pulse-nft-helper
+
+# Frontend dependencies and build artifacts
+/web/node_modules/
+/web/dist/
+/web/.vite/
+/web/test-results/
+/web/playwright-report/
+/web/.playwright-libs/
+
+# Playwright session/auth state
+/web/playwright/.auth/
+/web/tests/.auth/
+**/storage-state.json
+**/storageState.json
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Private keys / certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.token
+
+# Runtime state and local persistence
+*.wal
+*.checkpoint
+*.jsonl
+auth.json
+dns-control.json
+blocks.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*.log
+*~
+
+# Go
+coverage.out
+*.test
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated/release artifacts
+/src/dist/
+
+# Local nginx staging
+/web/.nginx/
