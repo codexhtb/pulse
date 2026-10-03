@@ -10,8 +10,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -209,6 +211,8 @@ func main() {
 		log.Fatalf("initialize authentication: %v", err)
 	}
 	s.auth = auth
+	runContext, stopBackground := context.WithCancel(context.Background())
+	defer stopBackground()
 	controlConfigPath := strings.TrimSpace(os.Getenv("PULSE_CONTROL_NODES_CONFIG"))
 	if controlConfigPath != "" {
 		nodes, err := loadControlNodes(controlConfigPath)
@@ -221,7 +225,7 @@ func main() {
 			log.Fatalf("initialize DNS control plane: %v", err)
 		}
 		s.control = control
-		s.control.start(context.Background())
+		s.control.start(runContext)
 	}
 
 	apiMux := http.NewServeMux()
@@ -250,6 +254,10 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", s.authLogin)
 	mux.HandleFunc("/api/v1/auth/session", s.authSession)
 	mux.HandleFunc("/api/v1/auth/logout", s.authLogout)
+	// Container-local health checks need a real dependency probe without an
+	// authenticated browser session. This port is not published by the Docker
+	// deployment and nginx does not proxy /internal paths.
+	mux.HandleFunc("/internal/health", s.health)
 	mux.Handle("/api/", s.requireAuthentication(apiMux))
 
 	handler := s.middleware(mux)
@@ -270,9 +278,24 @@ func main() {
 		net.JoinHostPort(host, port),
 	)
 
+	shutdownSignals := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(shutdownSignals)
+	go func() {
+		<-shutdownSignals
+		log.Printf("shutdown requested")
+		stopBackground()
+		shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancelShutdown()
+		if err := httpServer.Shutdown(shutdownContext); err != nil {
+			log.Printf("graceful HTTP shutdown: %v", err)
+		}
+	}()
+
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+	log.Printf("shutdown complete")
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {

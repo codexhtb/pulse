@@ -6,6 +6,7 @@
 /backups/
 /build-phase2-*/
 /bin/
+/.docker/
 *.bak
 *.backup
 *.old
@@ -81,3 +82,6 @@ yarn-error.log*
 
 # Local nginx staging
 /web/.nginx/
+
+# Docker deployment state
+/.compose-backups/

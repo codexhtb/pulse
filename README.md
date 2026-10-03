@@ -93,6 +93,11 @@ Pulse и DNStap не находятся в critical DNS request path. Недос
 
 ```text
 .
+├── compose.yaml            # Pulse Core Docker Compose
+├── install.sh              # idempotent one-command installer
+├── Makefile                # operational shortcuts
+├── docker/                 # image, nginx and ClickHouse definitions
+├── scripts/                # doctor, backup, restore and upgrade
 ├── README.md
 ├── src/
 │   ├── cmd/                 # Go services and helpers
@@ -111,6 +116,156 @@ Pulse и DNStap не находятся в critical DNS request path. Недос
 
 Каталог `bin/` используется локальным deployment и намеренно исключён из Git.
 
+## Docker Quick Start
+
+Pulse Core не требует установки агента на DNS-резолверы. Docker deployment
+поднимает только ClickHouse, `pulse-collector`, `pulse-api` и Pulse Web. После
+установки достаточно направить DNStap из Unbound на опубликованный TCP-порт
+collector.
+
+На чистой поддерживаемой Ubuntu-машине с Docker Engine и Docker Compose v2:
+
+```bash
+git clone <PULSE_REPOSITORY_URL> pulse
+cd pulse
+sudo ./install.sh
+```
+
+Installer проверяет ОС, архитектуру, Docker, свободное место и host ports;
+создаёт `.env` с mode `0600`, генерирует независимые ClickHouse credentials и
+self-signed TLS certificate, собирает образы, применяет схему, запрашивает
+первый Admin password и выполняет health/smoke checks. Повторный запуск
+идемпотентен: существующие secrets, Admin state и данные не пересоздаются.
+
+Сертификат первой установки является self-signed. Его можно добавить в
+локальное trust store либо заменить своими certificate/key через
+`PULSE_TLS_CERT_FILE` и `PULSE_TLS_KEY_FILE`. Let's Encrypt в этот deployment
+не встроен; внешний reverse proxy можно добавить отдельно.
+
+### Configuration
+
+Defaults находятся в `.env.example`. Для нестандартной установки создайте
+`.env` заранее и измените только необходимые параметры:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+editor .env
+sudo ./install.sh
+```
+
+Основные параметры:
+
+| Variable | Default | Назначение |
+|---|---:|---|
+| `PULSE_BIND_ADDRESS` | `0.0.0.0` | адрес host для Web и DNStap |
+| `PULSE_WEB_PORT` | `443` | внешний HTTPS-порт |
+| `PULSE_DNSTAP_PORT` | `6000` | внешний DNStap TCP-порт |
+| `PULSE_PUBLIC_NAME` | `pulse` | DNS SAN/CN для self-signed certificate |
+| `PULSE_EXPECTED_SOURCES` | empty | необязательный список ожидаемых source identities |
+| `PULSE_ADMIN_USERNAME` | `admin` | имя первого Admin |
+
+Значения `GENERATE_ON_INSTALL` заменяются случайными secrets только при первой
+установке. Реальный `.env`, TLS key и runtime state исключены из Git.
+
+### Ports and network
+
+Наружу публикуются только:
+
+- HTTPS Web/API: `${PULSE_BIND_ADDRESS}:${PULSE_WEB_PORT}`;
+- DNStap: `${PULSE_BIND_ADDRESS}:${PULSE_DNSTAP_PORT}/tcp`.
+
+`pulse-api:8081`, ClickHouse `8123/9000`, collector status `9093` и live UDP
+`9092` доступны только в отдельной Docker bridge network. Compose не использует
+host networking и privileged containers.
+
+Пример Unbound использует placeholders и только client query/response events:
+
+```yaml
+dnstap:
+    dnstap-enable: yes
+    dnstap-bidirectional: yes
+    dnstap-ip: "<PULSE_IP>@<PULSE_DNSTAP_PORT>"
+    dnstap-tls: no
+    dnstap-send-identity: yes
+    dnstap-identity: "resolver-a"
+    dnstap-log-client-query-messages: yes
+    dnstap-log-client-response-messages: yes
+```
+
+### Persistent volumes
+
+- `clickhouse-data` — raw DNS telemetry, aggregates, schema и migration history;
+- `collector-state` — pending WAL, checkpoints и recovery marker;
+- `api-state` — Admin accounts/password hashes и API runtime state.
+
+Обычные `docker compose down` / `up -d` сохраняют эти данные.
+
+### Operations
+
+```bash
+make status
+make logs
+make doctor
+make backup
+make upgrade
+```
+
+`scripts/doctor.sh` выполняет read-only проверку daemon/Compose, network,
+volumes, container health, ClickHouse/API/collector/Web endpoints, published
+ports и отсутствие accidental exposure API/ClickHouse.
+
+Backup ClickHouse выполняется штатным `BACKUP DATABASE`, а не копированием
+работающего data directory:
+
+```bash
+./scripts/backup.sh
+./scripts/backup.sh --include-secrets  # explicit sensitive archive mode
+```
+
+По умолчанию portable archive не содержит `.env` и API password hashes.
+`--include-secrets` добавляет их с явным предупреждением; такой archive нужно
+хранить как secret.
+
+Restore требует manifest, compatibility check и явное подтверждение:
+
+```bash
+./scripts/restore.sh --backup backups/pulse-<TIMESTAMP>.tar.gz
+./scripts/restore.sh --backup backups/pulse-<TIMESTAMP>.tar.gz --restore-auth-state
+```
+
+Restore работает только с volumes текущего Docker Compose project и не
+обращается к native ClickHouse или systemd services host.
+
+Upgrade выполняет `doctor → backup → pull/build → migrations → recreate →
+health validation`:
+
+```bash
+./scripts/upgrade.sh
+```
+
+### Troubleshooting and uninstall
+
+```bash
+docker compose ps
+docker compose logs --tail=200
+./scripts/doctor.sh
+docker compose config
+```
+
+Остановить и удалить containers/network, сохранив данные:
+
+```bash
+docker compose down
+```
+
+**Не запускайте `docker compose down -v`, если вы не намерены безвозвратно
+удалить данные после проверенного backup.** Флаг `-v` удаляет ClickHouse,
+collector WAL и Admin state volumes.
+
+Optional `pulse-agent`/DNS Control не входит в Docker Core, не устанавливается
+`install.sh` и документируется отдельно.
+
 ## Требования
 
 Фактические требования, закреплённые в репозитории:
@@ -120,10 +275,11 @@ Pulse и DNStap не находятся в critical DNS request path. Недос
   требует Node.js `>=20`);
 - npm и зависимости из `web/package-lock.json`;
 - ClickHouse с поддержкой используемых MergeTree/AggregatingMergeTree,
-  materialized views и TDigest aggregate states; версия сервера в репозитории
-  не закреплена;
+  materialized views и TDigest aggregate states; Docker deployment закреплён
+  на версии `26.3.36.6`, native deployment управляется отдельно;
 - Unbound, собранный с DNStap support; версия Unbound не закреплена;
 - Linux для production templates; systemd и nginx для показанного deployment;
+- Docker Engine и Docker Compose v2 для one-command Docker deployment;
 - для опционального control-plane: nftables, sudo, `ip`, `ss`, curl и
   sha256sum.
 
