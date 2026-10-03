@@ -9,6 +9,7 @@ info() { printf '==> %s\n' "$*"; }
 
 require_env() {
   [[ -f "$PULSE_ROOT/.env" ]] || die "$PULSE_ROOT/.env does not exist; run sudo ./install.sh first"
+  [[ -r "$PULSE_ROOT/.env" ]] || die "$PULSE_ROOT/.env is not readable by $(id -un); rerun sudo ./install.sh to repair project-local ownership"
   set -a
   # shellcheck disable=SC1091
   source "$PULSE_ROOT/.env"

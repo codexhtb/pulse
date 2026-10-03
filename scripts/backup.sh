@@ -5,8 +5,11 @@ umask 077
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
+# shellcheck source=scripts/install-ownership.sh
+source "$ROOT/scripts/install-ownership.sh"
 require_env
 require_docker
+pulse_resolve_operator
 
 include_secrets=false
 destination="$ROOT/backups"
@@ -28,6 +31,13 @@ timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup_id="pulse-${timestamp}"
 mkdir -p "$destination"
 chmod 0700 "$destination"
+project_backup_root=$(realpath -m -- "$ROOT/backups")
+destination_path=$(realpath -m -- "$destination")
+project_local_backup=false
+if [[ "$destination_path" == "$project_backup_root" || "$destination_path" == "$project_backup_root"/* ]]; then
+  project_local_backup=true
+  pulse_set_operator_path "$destination" 0700
+fi
 work=$(mktemp -d "$destination/.${backup_id}.XXXXXX")
 mkdir -p "$work/config" "$work/state" "$work/clickhouse"
 cleanup() { rm -rf -- "$work"; }
@@ -85,6 +95,7 @@ EOF
 archive="$destination/${backup_id}.tar.gz"
 tar -C "$work" -czf "$archive" .
 chmod 0600 "$archive"
+$project_local_backup && pulse_set_operator_path "$archive" 0600
 resume_services
 collector_was_running=false
 api_was_running=false

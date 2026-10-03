@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install up down restart status logs doctor backup restore upgrade config
+.PHONY: install up down restart status logs doctor backup restore upgrade config test-installer-ownership
 
 install:
 	sudo ./install.sh
@@ -35,3 +35,6 @@ upgrade:
 
 config:
 	docker compose config
+
+test-installer-ownership:
+	sudo ./scripts/test-installer-ownership.sh

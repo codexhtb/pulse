@@ -11,7 +11,7 @@ fail() { row "$1" "FAIL${2:+ — $2}"; failures=$((failures + 1)); }
 printf 'Pulse Doctor\n\n'
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then pass Docker; else fail Docker "daemon unavailable"; fi
 if docker compose version >/dev/null 2>&1; then pass Compose; else fail Compose "v2 unavailable"; fi
-if [[ -f "$ROOT/.env" ]]; then pass Configuration; else fail Configuration ".env missing"; fi
+if [[ -r "$ROOT/.env" ]]; then pass Configuration; elif [[ -e "$ROOT/.env" ]]; then fail Configuration ".env is not readable by $(id -un)"; else fail Configuration ".env missing"; fi
 
 if (( failures > 0 )); then exit 1; fi
 # shellcheck source=scripts/lib.sh

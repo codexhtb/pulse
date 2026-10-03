@@ -10,6 +10,9 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || die "run this installer with sudo"
+# shellcheck source=scripts/install-ownership.sh
+source "$ROOT/scripts/install-ownership.sh"
+pulse_resolve_operator
 [[ -r /etc/os-release ]] || die "cannot identify this Linux distribution"
 # shellcheck disable=SC1091
 source /etc/os-release
@@ -29,6 +32,7 @@ command -v ss >/dev/null 2>&1 || die "iproute2/ss is required"
 available_kb=$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')
 (( available_kb >= 5 * 1024 * 1024 )) || die "at least 5 GiB of free disk space is required"
 
+[[ ! -L "$ENV_FILE" ]] || die ".env must not be a symbolic link"
 if [[ ! -f "$ENV_FILE" ]]; then
   info "creating .env"
   cp "$ROOT/.env.example" "$ENV_FILE"
@@ -52,6 +56,8 @@ replace_placeholder() {
 replace_placeholder CLICKHOUSE_ADMIN_PASSWORD
 replace_placeholder CLICKHOUSE_API_PASSWORD
 replace_placeholder CLICKHOUSE_INGEST_PASSWORD
+pulse_finalize_operator_files "$ROOT" "$ENV_FILE" \
+  "$ROOT/.docker/tls/pulse.crt" "$ROOT/.docker/tls/pulse.key"
 
 set -a
 # shellcheck disable=SC1090
@@ -92,8 +98,17 @@ check_port "$PULSE_WEB_PORT" pulse-web 8443
 check_port "$PULSE_DNSTAP_PORT" pulse-collector 6000
 
 tls_dir="$ROOT/.docker/tls"
+[[ ! -L "$ROOT/.docker" && ! -L "$tls_dir" ]] || die ".docker and .docker/tls must not be symbolic links"
 install -d -m 0700 "$tls_dir"
-if [[ ! -s ${PULSE_TLS_CERT_FILE:-} || ! -s ${PULSE_TLS_KEY_FILE:-} ]]; then
+cert_is_local=false
+key_is_local=false
+pulse_path_is_within "$ROOT/.docker" "$PULSE_TLS_CERT_FILE" && cert_is_local=true
+pulse_path_is_within "$ROOT/.docker" "$PULSE_TLS_KEY_FILE" && key_is_local=true
+[[ "$cert_is_local" == "$key_is_local" ]] || die "TLS certificate and key must both be project-local or both external"
+local_tls=$cert_is_local
+if [[ ! -s "$PULSE_TLS_CERT_FILE" || ! -s "$PULSE_TLS_KEY_FILE" ]]; then
+  $local_tls || die "external TLS certificate and key must already exist"
+  [[ ! -L "$PULSE_TLS_CERT_FILE" && ! -L "$PULSE_TLS_KEY_FILE" ]] || die "project-local TLS files must not be symbolic links"
   info "creating a self-signed TLS certificate"
   san="DNS:${PULSE_PUBLIC_NAME},DNS:localhost,IP:127.0.0.1"
   if [[ "$PULSE_BIND_ADDRESS" != 0.0.0.0 ]]; then
@@ -103,8 +118,11 @@ if [[ ! -s ${PULSE_TLS_CERT_FILE:-} || ! -s ${PULSE_TLS_KEY_FILE:-} ]]; then
     -subj "/CN=${PULSE_PUBLIC_NAME}" -addext "subjectAltName=${san}" \
     -keyout "$PULSE_TLS_KEY_FILE" -out "$PULSE_TLS_CERT_FILE" >/dev/null 2>&1
 fi
-chmod 0600 "$PULSE_TLS_KEY_FILE"
-chmod 0644 "$PULSE_TLS_CERT_FILE"
+if $local_tls; then
+  [[ ! -L "$PULSE_TLS_CERT_FILE" && ! -L "$PULSE_TLS_KEY_FILE" ]] || die "project-local TLS files must not be symbolic links"
+fi
+pulse_finalize_operator_files "$ROOT" "$ENV_FILE" "$PULSE_TLS_CERT_FILE" "$PULSE_TLS_KEY_FILE"
+info "operator files owned by ${PULSE_OPERATOR_USER}:${PULSE_OPERATOR_GROUP}"
 
 info "validating Compose configuration"
 compose config --quiet

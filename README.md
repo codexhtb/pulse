@@ -136,6 +136,9 @@ Installer проверяет ОС, архитектуру, Docker, свобод�
 self-signed TLS certificate, собирает образы, применяет схему, запрашивает
 первый Admin password и выполняет health/smoke checks. Повторный запуск
 идемпотентен: существующие secrets, Admin state и данные не пересоздаются.
+При запуске через `sudo` project-local `.env` и `.docker/tls` принадлежат
+исходному `SUDO_USER` с ограниченными permissions. Поэтому operator с доступом
+к Docker daemon выполняет `docker compose`, `make` и scripts без `sudo`.
 
 Сертификат первой установки является self-signed. Его можно добавить в
 локальное trust store либо заменить своими certificate/key через
