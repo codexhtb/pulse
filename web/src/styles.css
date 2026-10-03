@@ -326,11 +326,12 @@ select { appearance: none; background-image: linear-gradient(45deg,transparent 5
 .pulse-identity svg { width: 100%; height: 100%; overflow: visible; }
 .heartbeat-line, .heartbeat-glow { fill: none; stroke: url(#pulse-line); stroke-width: 1.25; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: heartbeat-draw 1.55s cubic-bezier(.65,0,.35,1) .08s forwards, heartbeat-settle .85s ease 1.63s forwards; }
 .heartbeat-glow { stroke-width: 4.5; opacity: .13; filter: url(#pulse-glow); }
-.pulse-word { fill: rgba(8,13,18,.4); stroke: rgba(119,219,239,.86); stroke-width: 1.05; font: 680 84px 'Inter Variable', sans-serif; letter-spacing: .26em; paint-order: stroke; opacity: 0; transform-box: fill-box; transform-origin: center; filter: url(#pulse-glow); animation: pulse-reveal .9s cubic-bezier(.2,.78,.2,1) 1.35s forwards; }
+.pulse-word { fill: rgba(8,13,18,.4); stroke: rgba(119,219,239,.86); stroke-width: 1.05; font: 680 84px 'Inter Variable', sans-serif; letter-spacing: .26em; paint-order: stroke; opacity: 0; transform-box: fill-box; transform-origin: center; filter: url(#pulse-glow); text-shadow: 0 0 2px rgba(128,224,240,0), 0 0 9px rgba(69,201,232,0); animation: pulse-reveal .9s cubic-bezier(.2,.78,.2,1) 1.35s forwards, pulse-power .42s cubic-bezier(.16,.8,.28,1) 2.25s forwards; }
 .pulse-signature { fill: rgba(130,210,226,.86); font: 340 18px 'Inter Variable', sans-serif; letter-spacing: .18em; opacity: 0; transform-box: fill-box; transform-origin: center; animation: signature-reveal .55s ease-out 2.62s forwards; }
 @keyframes heartbeat-draw { 0% { stroke-dashoffset: 1; } 68% { stroke-dashoffset: .24; } 100% { stroke-dashoffset: 0; } }
 @keyframes heartbeat-settle { from { opacity: 1; } to { opacity: .24; } }
 @keyframes pulse-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: .56; transform: translateY(0); } }
+@keyframes pulse-power { from { opacity: .56; fill: rgba(8,13,18,.4); stroke: rgba(119,219,239,.86); text-shadow: 0 0 2px rgba(128,224,240,0), 0 0 9px rgba(69,201,232,0); } to { opacity: .8; fill: rgba(84,198,222,.16); stroke: rgba(139,226,243,.96); text-shadow: 0 0 2px rgba(139,226,243,.46), 0 0 9px rgba(69,201,232,.28); } }
 @keyframes signature-reveal { from { opacity: 0; transform: translateY(3px); } to { opacity: .48; transform: translateY(0); } }
 
 .login-card { width: min(100%, 430px); margin-top: 106px; position: relative; background: linear-gradient(145deg, rgba(20,29,38,.91), rgba(10,15,21,.94)); border: 1px solid rgba(113,169,186,.2); border-radius: 18px; box-shadow: 0 40px 100px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.035), 0 0 55px rgba(34,145,171,.08); backdrop-filter: blur(24px) saturate(115%); overflow: hidden; animation: card-arrive .75s cubic-bezier(.2,.8,.2,1) 2.92s both; }
@@ -458,7 +459,7 @@ select { appearance: none; background-image: linear-gradient(45deg,transparent 5
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .heartbeat-line, .heartbeat-glow, .pulse-word, .pulse-signature, .login-card, .login-step, .login-loading i { animation: none !important; }
   .heartbeat-line, .heartbeat-glow { stroke-dashoffset: 0; opacity: .24; }
-  .pulse-word { opacity: .56; transform: none; }
+  .pulse-word { opacity: .8; fill: rgba(84,198,222,.16); stroke: rgba(139,226,243,.96); text-shadow: 0 0 2px rgba(139,226,243,.46), 0 0 9px rgba(69,201,232,.28); transform: none; }
   .pulse-signature { opacity: .48; transform: none; }
   .login-card { opacity: 1; transform: none; }
 }

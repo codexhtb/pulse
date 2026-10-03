@@ -1,0 +1,13 @@
+<clickhouse>
+    <storage_configuration>
+        <disks>
+            <pulse_backups>
+                <type>local</type>
+                <path>/var/lib/clickhouse/pulse-backups/</path>
+            </pulse_backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>pulse_backups</allowed_disk>
+    </backups>
+</clickhouse>

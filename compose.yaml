@@ -1,0 +1,226 @@
+name: ${COMPOSE_PROJECT_NAME:-pulse}
+
+x-service-security: &service-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3.36.6-alpine}
+    environment:
+      CLICKHOUSE_DB: pulse
+      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    expose:
+      - "8123"
+      - "9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./docker/clickhouse/backup-disk.xml:/etc/clickhouse-server/config.d/backup-disk.xml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    restart: unless-stopped
+    stop_grace_period: 45s
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - pulse-core
+
+  state-init:
+    image: ${ALPINE_IMAGE:-alpine:3.21.3}
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        install -d -o 10001 -g 10001 -m 0750 /state/api /state/collector
+        chown -R 10001:10001 /state/api /state/collector
+        chmod 0750 /state/api /state/collector
+    volumes:
+      - api-state:/state/api
+      - collector-state:/state/collector
+    network_mode: none
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+
+  pulse-migrate:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3.36.6-alpine}
+    entrypoint: ["/bin/bash", "/pulse/docker/clickhouse/migrate.sh"]
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_ADMIN_USER}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
+      CLICKHOUSE_API_USER: ${CLICKHOUSE_API_USER}
+      CLICKHOUSE_API_PASSWORD: ${CLICKHOUSE_API_PASSWORD}
+      CLICKHOUSE_INGEST_USER: ${CLICKHOUSE_INGEST_USER}
+      CLICKHOUSE_INGEST_PASSWORD: ${CLICKHOUSE_INGEST_PASSWORD}
+    volumes:
+      - ./src:/pulse/src:ro
+      - ./docker/clickhouse/migrate.sh:/pulse/docker/clickhouse/migrate.sh:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - pulse-core
+
+  pulse-collector:
+    build:
+      context: .
+      dockerfile: docker/collector.Dockerfile
+    image: pulse-collector:${PULSE_VERSION:-dev}
+    command: ["-listen", "0.0.0.0:6000", "-tenant", "${PULSE_TENANT:-default}", "-clickhouse=true", "-debug-events=false"]
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      CLICKHOUSE_DATABASE: pulse
+      CLICKHOUSE_USER: ${CLICKHOUSE_INGEST_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_INGEST_PASSWORD}
+      PULSE_BATCH_SIZE: ${PULSE_BATCH_SIZE:-5000}
+      PULSE_QUEUE_SIZE: ${PULSE_QUEUE_SIZE:-100000}
+      PULSE_FLUSH_INTERVAL_MS: ${PULSE_FLUSH_INTERVAL_MS:-500}
+      PULSE_CORRELATION_TIMEOUT_MS: ${PULSE_CORRELATION_TIMEOUT_MS:-30000}
+      PULSE_EXPECTED_SOURCES: ${PULSE_EXPECTED_SOURCES:-}
+      PULSE_PENDING_STATE_DIR: /var/lib/pulse/pending
+      PULSE_PENDING_FLUSH_MS: ${PULSE_PENDING_FLUSH_MS:-10}
+      PULSE_PENDING_SYNC_MS: ${PULSE_PENDING_SYNC_MS:-100}
+      PULSE_PENDING_CHECKPOINT_MS: ${PULSE_PENDING_CHECKPOINT_MS:-60000}
+      PULSE_COLLECTOR_STATUS_LISTEN: 0.0.0.0:9093
+      PULSE_LIVE_UDP: pulse-api:9092
+      PULSE_LIVE_QUEUE_SIZE: ${PULSE_LIVE_QUEUE_SIZE:-50000}
+    ports:
+      - "${PULSE_BIND_ADDRESS:-0.0.0.0}:${PULSE_DNSTAP_PORT:-6000}:6000/tcp"
+    expose:
+      - "9093"
+    volumes:
+      - collector-state:/var/lib/pulse
+    depends_on:
+      state-init:
+        condition: service_completed_successfully
+      pulse-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/internal/status"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    <<: *service-security
+    networks:
+      - pulse-core
+
+  pulse-api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: pulse-api:${PULSE_VERSION:-dev}
+    command: ["-listen", "0.0.0.0:8081", "-auth-state", "/var/lib/pulse-api/auth.json"]
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      CLICKHOUSE_DATABASE: pulse
+      CLICKHOUSE_USER: ${CLICKHOUSE_API_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_API_PASSWORD}
+      PULSE_TENANT: ${PULSE_TENANT:-default}
+      PULSE_LIVE_UDP_LISTEN: 0.0.0.0:9092
+      PULSE_COLLECTOR_STATUS_URL: http://pulse-collector:9093/internal/status
+      PULSE_CLICKHOUSE_SYSTEM_METRICS: "false"
+    expose:
+      - "8081"
+      - "9092/udp"
+    volumes:
+      - api-state:/var/lib/pulse-api
+    depends_on:
+      state-init:
+        condition: service_completed_successfully
+      pulse-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/internal/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    <<: *service-security
+    networks:
+      - pulse-core
+
+  pulse-web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: pulse-web:${PULSE_VERSION:-dev}
+    ports:
+      - "${PULSE_BIND_ADDRESS:-0.0.0.0}:${PULSE_WEB_PORT:-443}:8443/tcp"
+    volumes:
+      - ${PULSE_TLS_CERT_FILE:-./.docker/tls/pulse.crt}:/etc/nginx/tls/pulse.crt:ro
+      - ${PULSE_TLS_KEY_FILE:-./.docker/tls/pulse.key}:/etc/nginx/tls/pulse.key:ro
+    depends_on:
+      pulse-api:
+        condition: service_healthy
+      pulse-collector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-q", "-O", "/dev/null", "https://127.0.0.1:8443/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,size=16m
+      - /var/run:rw,noexec,nosuid,size=1m
+      - /tmp:rw,noexec,nosuid,size=8m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    networks:
+      - pulse-core
+
+networks:
+  pulse-core:
+    driver: bridge
+
+volumes:
+  clickhouse-data:
+  collector-state:
+  api-state:
