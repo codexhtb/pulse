@@ -105,6 +105,8 @@ a { color: inherit; text-decoration: none; }
 .chart-tooltip span, .chart-tooltip small { display: block; color: var(--text-muted); font-size: 9px; }
 .chart-tooltip strong { display: block; margin: 5px 0; color: #ecf3f6; font-size: 12px; }
 .chart-tooltip small + small { margin-top: 3px; }
+.chart-tooltip em { display: block; color: #75b8c8; font-size: 8px; font-style: normal; margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(56,185,216,.12); }
+.chart-clickable, .chart-clickable .recharts-wrapper, .chart-drilldown-dot { cursor: pointer; }
 .operational-tooltip { min-width: 210px; }
 
 .resolver-comparison-panel { margin-bottom: 14px; }
