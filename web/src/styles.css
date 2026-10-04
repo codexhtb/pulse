@@ -222,6 +222,14 @@ tr:hover .copy-cell button, .copy-cell button:focus { opacity: 1; }
 .filter-grid { display: grid; align-items: end; gap: 10px; }
 .live-filter-grid { grid-template-columns: repeat(7, minmax(105px, 1fr)) auto; }
 .search-filter-grid { grid-template-columns: repeat(7, minmax(110px, 1fr)) auto; }
+.custom-time-controls { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(210px, 1fr) minmax(210px, 1fr) minmax(220px, auto); gap: 10px; align-items: end; padding: 10px; background: rgba(56,185,216,.025); border: 1px solid rgba(56,185,216,.1); border-radius: 5px; }
+.custom-time-controls input { color-scheme: dark; }
+.custom-time-zone { min-height: 34px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.custom-time-zone span { color: #778697; font-size: 8px; letter-spacing: .07em; text-transform: uppercase; font-weight: 650; margin-bottom: 4px; }
+.custom-time-zone strong { color: var(--text-soft); font-size: 9px; font-weight: 520; overflow-wrap: anywhere; }
+.custom-time-feedback { grid-column: 1 / -1; min-height: 30px; display: flex; align-items: center; padding: 7px 9px; border-radius: 4px; font-size: 9px; }
+.custom-time-feedback.warning { color: #d7b26a; background: rgba(215,178,106,.06); border: 1px solid rgba(215,178,106,.18); }
+.custom-time-feedback.error { color: #ee9ca4; background: rgba(226,109,118,.07); border: 1px solid rgba(226,109,118,.2); }
 .dns-control-grid { grid-template-columns: 150px minmax(240px, 1fr) auto; padding: 12px 16px; }
 .dns-control-grid > .health-list, .dns-control-grid > .table-scroll { grid-column: 1 / -1; }
 .dns-node-table td:last-child { max-width: 320px; overflow-wrap: anywhere; }
@@ -420,6 +428,8 @@ select { appearance: none; background-image: linear-gradient(45deg,transparent 5
   .pipeline-grid { grid-template-columns: 1fr; }
   .pipeline-grid .panel:nth-child(3) { grid-column: auto; }
   .filter-grid, .live-filter-grid, .search-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .custom-time-controls { grid-template-columns: 1fr 1fr; }
+  .custom-time-zone { grid-column: 1 / -1; }
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-create { grid-template-columns: 1fr; }
   .password-reset-strip { grid-template-columns: auto 1fr auto; }
@@ -434,6 +444,8 @@ select { appearance: none; background-image: linear-gradient(45deg,transparent 5
   .metric-grid-six, .metric-grid-live { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-card { min-height: 86px; }
   .filter-grid, .live-filter-grid, .search-filter-grid { grid-template-columns: 1fr; }
+  .custom-time-controls { grid-template-columns: 1fr; }
+  .custom-time-zone { grid-column: auto; }
   .filter-grid .button { width: 100%; }
   .panel-header { padding: 0 12px; }
   .chart { height: 245px; }

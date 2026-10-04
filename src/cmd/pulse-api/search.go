@@ -35,157 +35,54 @@ type searchEvent struct {
 
 type searchResponse struct {
 	Range      string        `json:"range"`
+	From       *time.Time    `json:"from,omitempty"`
+	To         *time.Time    `json:"to,omitempty"`
 	Count      int           `json:"count"`
 	Events     []searchEvent `json:"events"`
 	NextCursor string        `json:"next_cursor,omitempty"`
 }
 
 type searchCursor struct {
-	EventTime  time.Time `json:"t"`
-	IngestedAt time.Time `json:"i"`
-	DNSID      uint16    `json:"d"`
-	ClientPort uint16    `json:"p"`
+	EventTime  time.Time  `json:"t"`
+	IngestedAt time.Time  `json:"i"`
+	DNSID      uint16     `json:"d"`
+	ClientPort uint16     `json:"p"`
+	WindowFrom *time.Time `json:"f,omitempty"`
+	WindowTo   *time.Time `json:"e,omitempty"`
+}
+
+const (
+	rawEventRetention      = 24 * time.Hour
+	rawEventRetentionLabel = "24h"
+)
+
+type searchTimeWindow struct {
+	Range  string
+	From   time.Time
+	To     time.Time
+	Custom bool
+}
+
+func (window searchTimeWindow) contains(timestamp time.Time) bool {
+	timestamp = timestamp.UTC()
+	if timestamp.Before(window.From) {
+		return false
+	}
+	return !window.Custom || timestamp.Before(window.To)
+}
+
+type searchPlan struct {
+	Window searchTimeWindow
+	Where  []string
+	Args   []any
+	Limit  int
 }
 
 func (s *server) search(w http.ResponseWriter, r *http.Request) {
-	rangeName, duration, err := parseRange(r)
+	plan, err := buildSearchPlan(r, s.tenant, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
-	}
-
-	// RAW retention is currently 7 days.
-	if duration > 7*24*time.Hour {
-		writeError(
-			w,
-			http.StatusBadRequest,
-			fmt.Errorf("raw event search currently supports a maximum range of 7d"),
-		)
-		return
-	}
-
-	limit := parseSearchLimit(r)
-
-	now := time.Now().UTC()
-	since := now.Add(-duration)
-
-	where := []string{
-		"tenant_id = ?",
-		"event_time >= ?",
-	}
-
-	args := []any{
-		s.tenant,
-		since,
-	}
-
-	source := strings.TrimSpace(r.URL.Query().Get("source"))
-	if source != "" {
-		where = append(where, "source_id = ?")
-		args = append(args, source)
-	}
-
-	domain := normalizeDomain(r.URL.Query().Get("domain"))
-	if domain != "" {
-		where = append(where, "qname = ?")
-		args = append(args, domain)
-	}
-
-	clientIP := strings.TrimSpace(r.URL.Query().Get("client_ip"))
-	if clientIP != "" {
-		ip := net.ParseIP(clientIP)
-		if ip == nil {
-			writeError(
-				w,
-				http.StatusBadRequest,
-				fmt.Errorf("invalid client_ip %q", clientIP),
-			)
-			return
-		}
-
-		where = append(where, "client_ip = toIPv6(?)")
-		args = append(args, ip.String())
-	}
-
-	qtype := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("qtype")))
-	if qtype != "" {
-		where = append(where, "qtype = ?")
-		args = append(args, qtype)
-	}
-
-	rcode := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("rcode")))
-	if rcode != "" {
-		where = append(where, "rcode = ?")
-		args = append(args, rcode)
-	}
-
-	outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome")))
-	if outcome != "" {
-		if outcome != outcomeResponse && outcome != outcomeNoResponse && outcome != outcomeUnmatchedResponse {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid outcome"))
-			return
-		}
-		where = append(where, "outcome = ?")
-		args = append(args, outcome)
-	}
-	if parseBoolQuery(r.URL.Query().Get("failures")) {
-		where = append(where, "(outcome = 'NO_RESPONSE' OR rcode IN ('SERVFAIL', 'REFUSED', 'FORMERR'))")
-	}
-	if value := strings.TrimSpace(r.URL.Query().Get("slow_us")); value != "" {
-		slowUS, err := strconv.ParseUint(value, 10, 32)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("slow_us must be a non-negative integer"))
-			return
-		}
-		where = append(where, "outcome = 'RESPONSE' AND latency_us >= ?")
-		args = append(args, uint32(slowUS))
-	}
-
-	protocol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("protocol")))
-	if protocol != "" {
-		if protocol != "UDP" && protocol != "TCP" {
-			writeError(
-				w,
-				http.StatusBadRequest,
-				fmt.Errorf("protocol must be UDP or TCP"),
-			)
-			return
-		}
-
-		where = append(where, "protocol = ?")
-		args = append(args, protocol)
-	}
-
-	cursorValue := strings.TrimSpace(r.URL.Query().Get("cursor"))
-	if cursorValue != "" {
-		cursor, err := decodeSearchCursor(cursorValue)
-		if err != nil {
-			writeError(
-				w,
-				http.StatusBadRequest,
-				fmt.Errorf("invalid cursor"),
-			)
-			return
-		}
-
-		where = append(
-			where,
-			`(event_time, ingested_at, dns_id, client_port) <
-			(
-				toDateTime64(?, 6, 'UTC'),
-				toDateTime64(?, 6, 'UTC'),
-				?,
-				?
-			)`,
-		)
-
-		args = append(
-			args,
-			cursor.EventTime.UTC().Format("2006-01-02 15:04:05.000000"),
-			cursor.IngestedAt.UTC().Format("2006-01-02 15:04:05.000000"),
-			cursor.DNSID,
-			cursor.ClientPort,
-		)
 	}
 
 	query := fmt.Sprintf(`
@@ -216,22 +113,19 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 			dns_id DESC,
 			client_port DESC
 		LIMIT %d
-	`,
-		strings.Join(where, "\n AND "),
-		limit,
-	)
+	`, strings.Join(plan.Where, "\n AND "), plan.Limit)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	rows, err := s.db.Query(ctx, query, args...)
+	rows, err := s.db.Query(ctx, query, plan.Args...)
 	if err != nil {
 		writeDBError(w, err)
 		return
 	}
 	defer rows.Close()
 
-	events := make([]searchEvent, 0, limit)
+	events := make([]searchEvent, 0, plan.Limit)
 
 	for rows.Next() {
 		var event searchEvent
@@ -279,26 +173,223 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := searchResponse{
-		Range:  rangeName,
+		Range:  plan.Window.Range,
 		Count:  len(events),
 		Events: events,
 	}
+	if plan.Window.Custom {
+		from, to := plan.Window.From, plan.Window.To
+		response.From, response.To = &from, &to
+	}
 
-	if len(events) == limit {
+	if len(events) == plan.Limit {
 		last := events[len(events)-1]
-
-		cursor, err := encodeSearchCursor(searchCursor{
+		cursor := searchCursor{
 			EventTime:  last.EventTime,
 			IngestedAt: last.IngestedAt,
 			DNSID:      last.DNSID,
 			ClientPort: last.ClientPort,
-		})
+		}
+		if plan.Window.Custom {
+			from, to := plan.Window.From, plan.Window.To
+			cursor.WindowFrom, cursor.WindowTo = &from, &to
+		}
+
+		encoded, err := encodeSearchCursor(cursor)
 		if err == nil {
-			response.NextCursor = cursor
+			response.NextCursor = encoded
 		}
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func buildSearchPlan(r *http.Request, tenant string, now time.Time) (searchPlan, error) {
+	window, err := parseSearchWindow(r, now)
+	if err != nil {
+		return searchPlan{}, err
+	}
+
+	plan := searchPlan{
+		Window: window,
+		Where:  []string{"tenant_id = ?"},
+		Args:   []any{tenant},
+		Limit:  parseSearchLimit(r),
+	}
+	if window.Custom {
+		plan.Where = append(plan.Where,
+			"event_time >= toDateTime64(?, 6, 'UTC')",
+			"event_time < toDateTime64(?, 6, 'UTC')",
+		)
+		plan.Args = append(plan.Args, formatClickHouseTime(window.From), formatClickHouseTime(window.To))
+	} else {
+		plan.Where = append(plan.Where, "event_time >= ?")
+		plan.Args = append(plan.Args, window.From)
+	}
+
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	if source != "" {
+		plan.Where = append(plan.Where, "source_id = ?")
+		plan.Args = append(plan.Args, source)
+	}
+
+	domain := normalizeDomain(r.URL.Query().Get("domain"))
+	if domain != "" {
+		plan.Where = append(plan.Where, "qname = ?")
+		plan.Args = append(plan.Args, domain)
+	}
+
+	clientIP := strings.TrimSpace(r.URL.Query().Get("client_ip"))
+	if clientIP != "" {
+		ip := net.ParseIP(clientIP)
+		if ip == nil {
+			return searchPlan{}, fmt.Errorf("invalid client_ip %q", clientIP)
+		}
+
+		plan.Where = append(plan.Where, "client_ip = toIPv6(?)")
+		plan.Args = append(plan.Args, ip.String())
+	}
+
+	qtype := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("qtype")))
+	if qtype != "" {
+		plan.Where = append(plan.Where, "qtype = ?")
+		plan.Args = append(plan.Args, qtype)
+	}
+
+	rcode := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("rcode")))
+	if rcode != "" {
+		plan.Where = append(plan.Where, "rcode = ?")
+		plan.Args = append(plan.Args, rcode)
+	}
+
+	outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome")))
+	if outcome != "" {
+		if outcome != outcomeResponse && outcome != outcomeNoResponse && outcome != outcomeUnmatchedResponse {
+			return searchPlan{}, fmt.Errorf("invalid outcome")
+		}
+		plan.Where = append(plan.Where, "outcome = ?")
+		plan.Args = append(plan.Args, outcome)
+	}
+	if parseBoolQuery(r.URL.Query().Get("failures")) {
+		plan.Where = append(plan.Where, "(outcome = 'NO_RESPONSE' OR rcode IN ('SERVFAIL', 'REFUSED', 'FORMERR'))")
+	}
+	if value := strings.TrimSpace(r.URL.Query().Get("slow_us")); value != "" {
+		slowUS, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return searchPlan{}, fmt.Errorf("slow_us must be a non-negative integer")
+		}
+		plan.Where = append(plan.Where, "outcome = 'RESPONSE' AND latency_us >= ?")
+		plan.Args = append(plan.Args, uint32(slowUS))
+	}
+
+	protocol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("protocol")))
+	if protocol != "" {
+		if protocol != "UDP" && protocol != "TCP" {
+			return searchPlan{}, fmt.Errorf("protocol must be UDP or TCP")
+		}
+
+		plan.Where = append(plan.Where, "protocol = ?")
+		plan.Args = append(plan.Args, protocol)
+	}
+
+	cursorValue := strings.TrimSpace(r.URL.Query().Get("cursor"))
+	if cursorValue != "" {
+		cursor, err := decodeSearchCursor(cursorValue)
+		if err != nil {
+			return searchPlan{}, fmt.Errorf("invalid cursor")
+		}
+		if window.Custom {
+			if cursor.WindowFrom == nil || cursor.WindowTo == nil ||
+				!cursor.WindowFrom.Equal(window.From) || !cursor.WindowTo.Equal(window.To) {
+				return searchPlan{}, fmt.Errorf("cursor does not match the selected custom time window")
+			}
+		} else if cursor.WindowFrom != nil || cursor.WindowTo != nil {
+			return searchPlan{}, fmt.Errorf("cursor requires its original custom time window")
+		}
+
+		plan.Where = append(
+			plan.Where,
+			`(event_time, ingested_at, dns_id, client_port) <
+			(
+				toDateTime64(?, 6, 'UTC'),
+				toDateTime64(?, 6, 'UTC'),
+				?,
+				?
+			)`,
+		)
+
+		plan.Args = append(
+			plan.Args,
+			cursor.EventTime.UTC().Format("2006-01-02 15:04:05.000000"),
+			cursor.IngestedAt.UTC().Format("2006-01-02 15:04:05.000000"),
+			cursor.DNSID,
+			cursor.ClientPort,
+		)
+	}
+
+	return plan, nil
+}
+
+func parseSearchWindow(r *http.Request, now time.Time) (searchTimeWindow, error) {
+	query := r.URL.Query()
+	fromValue := strings.TrimSpace(query.Get("from"))
+	toValue := strings.TrimSpace(query.Get("to"))
+	rangeValue := strings.TrimSpace(query.Get("range"))
+
+	if fromValue != "" || toValue != "" || rangeValue == "custom" {
+		if fromValue == "" || toValue == "" {
+			return searchTimeWindow{}, fmt.Errorf("custom search requires both from and to RFC3339 timestamps")
+		}
+		if rangeValue != "" && rangeValue != "custom" {
+			return searchTimeWindow{}, fmt.Errorf("relative range cannot be combined with from and to")
+		}
+		from, err := parseSearchTimestamp("from", fromValue)
+		if err != nil {
+			return searchTimeWindow{}, err
+		}
+		to, err := parseSearchTimestamp("to", toValue)
+		if err != nil {
+			return searchTimeWindow{}, err
+		}
+		if !from.Before(to) {
+			return searchTimeWindow{}, fmt.Errorf("from must be earlier than to")
+		}
+		if to.Sub(from) > rawEventRetention {
+			return searchTimeWindow{}, fmt.Errorf("custom search window cannot exceed %s", rawEventRetentionLabel)
+		}
+		from, to = ceilToMicrosecond(from), ceilToMicrosecond(to)
+		if !from.Before(to) {
+			return searchTimeWindow{}, fmt.Errorf("custom search window is smaller than ClickHouse timestamp precision")
+		}
+		return searchTimeWindow{Range: "custom", From: from, To: to, Custom: true}, nil
+	}
+
+	rangeName, duration, err := parseRange(r)
+	if err != nil {
+		return searchTimeWindow{}, err
+	}
+	return searchTimeWindow{Range: rangeName, From: now.UTC().Add(-duration)}, nil
+}
+
+func parseSearchTimestamp(name, value string) (time.Time, error) {
+	timestamp, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s must be an RFC3339 timestamp with timezone offset", name)
+	}
+	return timestamp.UTC(), nil
+}
+
+func ceilToMicrosecond(timestamp time.Time) time.Time {
+	timestamp = timestamp.UTC()
+	truncated := timestamp.Truncate(time.Microsecond)
+	if truncated.Before(timestamp) {
+		return truncated.Add(time.Microsecond)
+	}
+	return truncated
+}
+
+func formatClickHouseTime(timestamp time.Time) string {
+	return timestamp.UTC().Format("2006-01-02 15:04:05.000000")
 }
 
 func parseSearchLimit(r *http.Request) int {

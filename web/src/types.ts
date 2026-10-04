@@ -1,4 +1,5 @@
 export type TimeRange = '15m' | '1h' | '3h' | '6h' | '12h' | '24h'
+export type SearchRange = TimeRange | 'custom'
 
 export interface OverviewData {
   range: string
@@ -130,6 +131,8 @@ export interface DnsEvent {
 
 export interface SearchResponse {
   range: string
+  from?: string
+  to?: string
   count: number
   events: DnsEvent[]
   next_cursor?: string
@@ -411,4 +414,10 @@ export interface QueryFilters {
   outcome: string
   failures?: boolean
   slow_us?: number
+}
+
+export interface SearchFilters extends Omit<QueryFilters, 'range'> {
+  range: SearchRange
+  from?: string
+  to?: string
 }

@@ -48,8 +48,8 @@ test('search uses cursor results and supports a real empty state', async ({ page
   const checkConsole = await expectNoConsoleErrors(page)
   await page.goto('/search')
   await expect(page.getByRole('heading', { name: 'Historical search' })).toBeVisible()
-  await expect(page.getByLabel('Range').locator('option')).toHaveText(['15m', '1h', '3h', '6h', '12h', '24h'])
-  await expect(page.getByText('Raw event retention is limited to 24 hours.')).toBeVisible()
+  await expect(page.getByLabel('Range').locator('option')).toHaveText(['15m', '1h', '3h', '6h', '12h', '24h', 'Custom'])
+  await expect(page.getByText('Raw event retention: 24h.')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Outcome' })).toBeVisible()
   await expect(page.locator('.events-table tbody tr').first()).toBeVisible()
 

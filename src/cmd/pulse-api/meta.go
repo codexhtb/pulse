@@ -33,7 +33,7 @@ func (s *server) meta(w http.ResponseWriter, r *http.Request) {
 		},
 
 		"retention": map[string]string{
-			"raw":                   "7d",
+			"raw":                   rawEventRetentionLabel,
 			"domain_minute":         "90d",
 			"client_minute":         "90d",
 			"client_domain_hour":    "90d",
