@@ -12,6 +12,7 @@ import type {
   PipelineSystem,
   OverviewData,
   QueryFilters,
+  SearchFilters,
   RCodeRow,
   SearchResponse,
   SourceRow,
@@ -126,7 +127,7 @@ export const api = {
   anomalies: (signal?: AbortSignal) => request<AnomaliesResponse>('/api/v1/anomalies', signal),
   system: (signal?: AbortSignal) => request<PipelineSystem>('/api/v1/system', signal),
   search: (
-    filters: QueryFilters,
+    filters: SearchFilters,
     options: { cursor?: string; limit?: number } = {},
     signal?: AbortSignal,
   ) =>
