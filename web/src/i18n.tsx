@@ -59,6 +59,7 @@ const ru: Record<string, string> = {
   'The selected window is longer than raw event retention ({retention}).': 'Выбранный интервал длиннее срока хранения сырых событий ({retention}).',
   'This window is outside raw event retention; matching events may already have expired.': 'Этот интервал находится за пределами хранения сырых событий; данные уже могли быть удалены.',
   'Part of this window is outside raw event retention and may be incomplete.': 'Часть интервала находится за пределами хранения сырых событий; результат может быть неполным.',
+  'Open events for this interval': 'Открыть события за этот интервал',
   'Current threshold deviations. These are operational signals, not confirmed security incidents.': 'Текущие отклонения от порогов. Это эксплуатационные сигналы, а не подтверждённые инциденты.',
   'Current operational threshold state': 'Текущее состояние операционных порогов', 'All monitored thresholds are within their configured bounds.': 'Все контролируемые пороги в заданных пределах.',
   'Severity': 'Важность', 'Anomaly': 'Аномалия', 'Value': 'Значение', 'Threshold': 'Порог', 'Observed': 'Обнаружено',

@@ -85,6 +85,10 @@ function createInitialDraft(searchParams: URLSearchParams): SearchDraft {
     source: searchParams.get('source') ?? '',
     client_ip: searchParams.get('client_ip') ?? '',
     domain: searchParams.get('domain') ?? '',
+    qtype: searchParams.get('qtype') ?? '',
+    rcode: searchParams.get('rcode') ?? '',
+    outcome: searchParams.get('outcome') ?? '',
+    protocol: searchParams.get('protocol') ?? '',
   }
 }
 

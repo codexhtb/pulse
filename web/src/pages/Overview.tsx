@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import {
   EmptyState,
@@ -15,7 +15,7 @@ import {
 import { TrafficChart, type TrafficChartMode } from '../components/TrafficChart'
 import { formatCompact, formatDateTime, formatLatency, formatPercent, relativeTime } from '../format'
 import { useAsync } from '../hooks/useAsync'
-import type { RCodeRow, SourceRow, TimeRange } from '../types'
+import type { RCodeRow, SourceRow, TimeRange, TrafficPoint } from '../types'
 import { useI18n } from '../i18n'
 
 function formatAge(seconds: number | null, language: string): string {
@@ -72,6 +72,7 @@ function freshness(sources: SourceRow[]) {
 
 export function OverviewPage() {
   const { language, t } = useI18n()
+  const navigate = useNavigate()
   const [range, setRange] = useState<TimeRange>('6h')
   const [chartMode, setChartMode] = useState<TrafficChartMode>('traffic')
   const state = useAsync(
@@ -99,6 +100,15 @@ export function OverviewPage() {
   const freshnessDetail = fresh?.degraded
     ? `${fresh.degraded.source_id} ${t('last seen')} ${formatAge(fresh.degraded.age_seconds, language)} ${t('ago')}`
     : `${t('Last event')}: ${formatAge(fresh?.newestAge ?? null, language)} · ${t('Ingest lag')}: ${formatAge(fresh?.worstLag ?? null, language)}`
+  const openBucket = (point: TrafficPoint, series: string) => {
+    const start = new Date(point.time)
+    if (Number.isNaN(start.getTime()) || !Number.isFinite(point.bucket_seconds) || point.bucket_seconds <= 0) return
+    const end = new Date(start.getTime() + point.bucket_seconds * 1000)
+    const params = new URLSearchParams({ range: 'custom', from: start.toISOString(), to: end.toISOString() })
+    if (series === 'servfail_pct') params.set('rcode', 'SERVFAIL')
+    if (series === 'nxdomain_pct') params.set('rcode', 'NXDOMAIN')
+    navigate(`/search?${params.toString()}`)
+  }
 
   return (
     <div className="page overview-page">
@@ -140,7 +150,7 @@ export function OverviewPage() {
               {(['traffic', 'errors', 'latency'] as TrafficChartMode[]).map((mode) => <button key={mode} type="button" className={chartMode === mode ? 'selected' : ''} onClick={() => setChartMode(mode)}>{t(mode[0].toUpperCase() + mode.slice(1))}</button>)}
             </div>}
           >
-            <TrafficChart data={data.traffic} mode={chartMode} operational />
+            <TrafficChart data={data.traffic} mode={chartMode} operational onBucketClick={openBucket} />
           </Panel>
 
           <Panel title={t('Resolver comparison')} subtitle={t('{range} metrics with realtime QPS', { range })} action={<ViewAll to="/sources" />} className="resolver-comparison-panel">
